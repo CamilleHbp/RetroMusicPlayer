@@ -14,6 +14,7 @@ import code.name.monkey.retromusic.model.AudioTagInfo
 import code.name.monkey.retromusic.util.MusicUtil.createAlbumArtFile
 import code.name.monkey.retromusic.util.MusicUtil.deleteAlbumArt
 import code.name.monkey.retromusic.util.MusicUtil.insertAlbumArt
+import code.name.monkey.retromusic.util.MusicTagMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jaudiotagger.audio.AudioFileIO
@@ -22,6 +23,7 @@ import org.jaudiotagger.audio.exceptions.CannotWriteException
 import org.jaudiotagger.audio.exceptions.InvalidAudioFrameException
 import org.jaudiotagger.audio.exceptions.ReadOnlyFileException
 import org.jaudiotagger.tag.FieldDataInvalidException
+import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.TagException
 import org.jaudiotagger.tag.images.AndroidArtwork
 import org.jaudiotagger.tag.images.Artwork
@@ -71,11 +73,18 @@ class TagWriter {
                 var deletedArtwork = false
                 for (filePath in info.filePaths!!) {
                     try {
-                        val audioFile = AudioFileIO.read(File(filePath))
-                        val tag = audioFile.tagOrCreateAndSetDefault
-                        if (info.fieldKeyValueMap != null) {
-                            for ((key, newValue) in info.fieldKeyValueMap) {
-                                try {
+                    val audioFile = AudioFileIO.read(File(filePath))
+                    val tag = audioFile.tagOrCreateAndSetDefault
+                    if (info.musicTagSet != null) {
+                        MusicTagMetadata.write(tag, info.musicTagSet)
+                    }
+                    if (info.fieldKeyValueMap != null) {
+                        for ((key, newValue) in info.fieldKeyValueMap) {
+                            if (
+                                info.musicTagSet != null &&
+                                (key == FieldKey.GENRE || key == FieldKey.MOOD || key == FieldKey.TAGS)
+                            ) continue
+                            try {
                                     val currentValue = tag.getFirst(key)
                                     if (currentValue != newValue) {
                                         if (newValue.isEmpty()) {
@@ -164,12 +173,19 @@ class TagWriter {
                             }
                         }
 
-                        val audioFile = AudioFileIO.read(cacheFile)
-                        val tag = audioFile.tagOrCreateAndSetDefault
+                val audioFile = AudioFileIO.read(cacheFile)
+                val tag = audioFile.tagOrCreateAndSetDefault
+                if (info.musicTagSet != null) {
+                    MusicTagMetadata.write(tag, info.musicTagSet)
+                }
 
-                        if (info.fieldKeyValueMap != null) {
-                            for ((key, newValue) in info.fieldKeyValueMap) {
-                                try {
+                if (info.fieldKeyValueMap != null) {
+                    for ((key, newValue) in info.fieldKeyValueMap) {
+                        if (
+                            info.musicTagSet != null &&
+                            (key == FieldKey.GENRE || key == FieldKey.MOOD || key == FieldKey.TAGS)
+                        ) continue
+                        try {
                                     val currentValue = tag.getFirst(key)
                                     if (currentValue != newValue) {
                                         if (newValue.isEmpty()) {
@@ -185,9 +201,9 @@ class TagWriter {
                                     return@withContext listOf<File>()
                                 } catch (e: Exception) {
                                     e.printStackTrace()
-                                }
-                            }
-                        }
+        }
+    }
+}
                         if (info.artworkInfo != null) {
                             if (info.artworkInfo.artwork == null) {
                                 tag.deleteArtworkField()

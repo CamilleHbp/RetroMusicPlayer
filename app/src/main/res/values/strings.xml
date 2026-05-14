@@ -196,6 +196,10 @@
     <string name="general_settings_summary">Change the theme and colors of the app</string>
     <string name="general_settings_title">Look and feel</string>
     <string name="genre">Genre</string>
+    <string name="mood">Mood</string>
+    <string name="tags">Tags</string>
+    <string name="included_tags">Included tags</string>
+    <string name="excluded_tags">Excluded tags</string>
     <string name="genres">Genres</string>
     <string name="git_hub_summary">Fork the project on GitHub</string>
     <string name="gradient">Gradient</string>
@@ -261,6 +265,7 @@
     <string name="never">Never</string>
     <string name="new_music_mix">New Music Mix</string>
     <string name="new_playlist_title">New playlist</string>
+    <string name="new_dynamic_playlist_title">New tag playlist</string>
     <string name="new_start_directory">%s is the new start directory.</string>
     <string name="next_song">Next Song</string>
     <string name="no_albums">You have no albums</string>

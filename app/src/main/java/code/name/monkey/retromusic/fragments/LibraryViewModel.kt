@@ -26,8 +26,10 @@ import code.name.monkey.retromusic.fragments.search.Filter
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.interfaces.IMusicServiceEventListener
 import code.name.monkey.retromusic.model.*
+import code.name.monkey.retromusic.repository.MusicTagRepository
 import code.name.monkey.retromusic.repository.RealRepository
 import code.name.monkey.retromusic.util.DensityUtil
+import code.name.monkey.retromusic.util.MusicTagMetadata
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.logD
 import kotlinx.coroutines.Dispatchers.IO
@@ -40,6 +42,7 @@ import java.io.File
 
 class LibraryViewModel(
     private val repository: RealRepository,
+    private val musicTagRepository: MusicTagRepository,
 ) : ViewModel(), IMusicServiceEventListener {
 
     private val _paletteColor = MutableLiveData<Int>()
@@ -110,12 +113,26 @@ class LibraryViewModel(
     }
 
     private suspend fun fetchPlaylists() {
-        playlists.postValue(repository.fetchPlaylistWithSongs())
+        val roomPlaylists = repository.fetchPlaylistWithSongs()
+        val dynamicPlaylists = musicTagRepository.dynamicPlaylists().map { playlist ->
+            val playlistId = dynamicPlaylistListId(playlist.id)
+            PlaylistWithSongs(
+                playlistEntity = PlaylistEntity(
+                    playListId = playlistId,
+                    playlistName = playlist.name
+                ),
+                songs = musicTagRepository.dynamicSongs(playlist.spec)
+                    .map { it.toSongEntity(playlistId) }
+            )
+        }
+        playlists.postValue(roomPlaylists + dynamicPlaylists)
     }
 
     private suspend fun fetchGenres() {
         genres.postValue(repository.fetchGenres())
     }
+
+    private fun dynamicPlaylistListId(dynamicPlaylistId: Long): Long = -dynamicPlaylistId - 1
 
     private suspend fun fetchHomeSections() {
         home.postValue(repository.homeSections())
@@ -142,6 +159,25 @@ class LibraryViewModel(
             Suggestions -> fetchSuggestions()
             PlayCount -> fetchPlayCountSongs()
         }
+    }
+
+    fun createDynamicPlaylist(
+        name: String,
+        includedTags: String,
+        excludedTags: String,
+        includeMode: DynamicTagIncludeMode = DynamicTagIncludeMode.ALL
+    ) = viewModelScope.launch(IO) {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return@launch
+        musicTagRepository.createDynamicPlaylist(
+            name = trimmedName,
+            spec = DynamicTagPlaylist(
+                includedTags = MusicTagMetadata.parseText(includedTags).map { MusicTagRule(it) },
+                excludedTags = MusicTagMetadata.parseText(excludedTags).map { MusicTagRule(it) },
+                includeMode = includeMode
+            )
+        )
+        fetchPlaylists()
     }
 
     fun updateColor(newColor: Int) {

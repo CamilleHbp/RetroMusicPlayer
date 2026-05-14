@@ -177,13 +177,14 @@
                             app:hintEnabled="true">
 
 
-                            <com.google.android.material.textfield.TextInputEditText
+                            <code.name.monkey.retromusic.views.MaterialMultiAutoCompleteTextView
                                 android:id="@+id/genreText"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:layout_gravity="center"
                                 android:gravity="center_vertical"
                                 android:hint="@string/genre"
+                                android:inputType="text|textCapWords"
                                 android:maxLines="1" />
 
                         </com.google.android.material.textfield.TextInputLayout>
@@ -208,6 +209,56 @@
                                 android:gravity="center_vertical"
                                 android:hint="@string/year"
                                 android:inputType="text|number"
+                                android:maxLines="1" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/moodContainer"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:layout_weight="1"
+                            app:hintEnabled="true">
+
+                            <code.name.monkey.retromusic.views.MaterialMultiAutoCompleteTextView
+                                android:id="@+id/moodText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:gravity="center_vertical"
+                                android:hint="@string/mood"
+                                android:inputType="text|textCapWords"
+                                android:maxLines="1" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/tagsContainer"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:layout_marginTop="8dp"
+                            android:layout_weight="1"
+                            app:hintEnabled="true">
+
+                            <code.name.monkey.retromusic.views.MaterialMultiAutoCompleteTextView
+                                android:id="@+id/tagsText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="center"
+                                android:gravity="center_vertical"
+                                android:hint="@string/tags"
+                                android:inputType="text|textCapWords"
                                 android:maxLines="1" />
 
                         </com.google.android.material.textfield.TextInputLayout>
@@ -320,4 +371,3 @@
         android:visibility="gone" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
-

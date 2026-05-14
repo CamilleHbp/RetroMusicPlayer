@@ -46,9 +46,11 @@ import code.name.monkey.retromusic.extensions.hideSoftKeyboard
 import code.name.monkey.retromusic.extensions.setTaskDescriptionColorAuto
 import code.name.monkey.retromusic.model.ArtworkInfo
 import code.name.monkey.retromusic.model.AudioTagInfo
+import code.name.monkey.retromusic.model.MusicTagSet
 import code.name.monkey.retromusic.repository.Repository
 import code.name.monkey.retromusic.util.logD
 import code.name.monkey.retromusic.util.logE
+import code.name.monkey.retromusic.util.MusicTagMetadata
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.GlobalScope
@@ -71,6 +73,7 @@ abstract class AbsTagEditorActivity<VB : ViewBinding> : AbsBaseActivity() {
     private var savedSongPaths: List<String>? = null
     private val currentSongPath: String? = null
     private var savedTags: Map<FieldKey, String>? = null
+    private var savedMusicTagSet: MusicTagSet? = null
     private var savedArtworkInfo: ArtworkInfo? = null
     private var _binding: VB? = null
     protected val binding: VB get() = _binding!!
@@ -163,6 +166,16 @@ abstract class AbsTagEditorActivity<VB : ViewBinding> : AbsBaseActivity() {
             } catch (e: Exception) {
                 logE(e)
                 null
+            }
+        }
+
+    protected val musicTagSet: MusicTagSet
+        get() {
+            return try {
+                MusicTagMetadata.read(getAudioFile(songPaths!![0]).tagOrCreateAndSetDefault)
+            } catch (e: Exception) {
+                logE(e)
+                MusicTagSet()
             }
         }
 
@@ -357,19 +370,24 @@ abstract class AbsTagEditorActivity<VB : ViewBinding> : AbsBaseActivity() {
 
     protected fun writeValuesToFiles(
         fieldKeyValueMap: Map<FieldKey, String>,
-        artworkInfo: ArtworkInfo?
+        artworkInfo: ArtworkInfo?,
+        musicTagSet: MusicTagSet? = null
     ) {
         hideSoftKeyboard()
 
         hideFab()
         logD(fieldKeyValueMap)
+        savedTags = fieldKeyValueMap
+        savedMusicTagSet = musicTagSet
+        savedArtworkInfo = artworkInfo
         GlobalScope.launch {
             if (VersionUtils.hasR()) {
                 cacheFiles = TagWriter.writeTagsToFilesR(
                     this@AbsTagEditorActivity, AudioTagInfo(
                         songPaths,
                         fieldKeyValueMap,
-                        artworkInfo
+                        artworkInfo,
+                        musicTagSet
                     )
                 )
 
@@ -379,13 +397,14 @@ abstract class AbsTagEditorActivity<VB : ViewBinding> : AbsBaseActivity() {
                     launcher.launch(IntentSenderRequest.Builder(pendingIntent).build())
                 }
             } else {
-                TagWriter.writeTagsToFiles(
-                    this@AbsTagEditorActivity, AudioTagInfo(
-                        songPaths,
-                        fieldKeyValueMap,
-                        artworkInfo
-                    )
+            TagWriter.writeTagsToFiles(
+                this@AbsTagEditorActivity, AudioTagInfo(
+                    songPaths,
+                    fieldKeyValueMap,
+                    artworkInfo,
+                    musicTagSet
                 )
+            )
             }
         }
     }
@@ -395,10 +414,11 @@ abstract class AbsTagEditorActivity<VB : ViewBinding> : AbsBaseActivity() {
             if (VersionUtils.hasR()) {
                 cacheFiles = TagWriter.writeTagsToFilesR(
                     this@AbsTagEditorActivity, AudioTagInfo(
-                        paths,
-                        savedTags,
-                        savedArtworkInfo
-                    )
+                paths,
+                savedTags,
+                savedArtworkInfo,
+                savedMusicTagSet
+            )
                 )
                 val pendingIntent = MediaStore.createWriteRequest(contentResolver, getSongUris())
 
@@ -406,10 +426,11 @@ abstract class AbsTagEditorActivity<VB : ViewBinding> : AbsBaseActivity() {
             } else {
                 TagWriter.writeTagsToFiles(
                     this@AbsTagEditorActivity, AudioTagInfo(
-                        paths,
-                        savedTags,
-                        savedArtworkInfo
-                    )
+                paths,
+                savedTags,
+                savedArtworkInfo,
+                savedMusicTagSet
+            )
                 )
             }
         }

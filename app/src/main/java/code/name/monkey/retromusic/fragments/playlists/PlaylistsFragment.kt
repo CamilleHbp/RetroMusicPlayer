@@ -14,28 +14,53 @@
  */
 package code.name.monkey.retromusic.fragments.playlists
 
+import android.content.Context
 import android.os.Bundle
 import android.view.*
+import android.widget.BaseAdapter
+import android.widget.Filter
+import android.widget.Filterable
+import android.widget.LinearLayout
+import android.widget.MultiAutoCompleteTextView
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.os.bundleOf
 import androidx.core.view.MenuCompat
+import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import code.name.monkey.retromusic.EXTRA_PLAYLIST_ID
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.playlist.PlaylistAdapter
 import code.name.monkey.retromusic.db.PlaylistWithSongs
+import code.name.monkey.retromusic.db.toSongs
+import code.name.monkey.retromusic.extensions.dipToPix
 import code.name.monkey.retromusic.extensions.setUpMediaRouteButton
 import code.name.monkey.retromusic.fragments.ReloadType
 import code.name.monkey.retromusic.fragments.base.AbsRecyclerViewCustomGridSizeFragment
+import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.SortOrder.PlaylistSortOrder
 import code.name.monkey.retromusic.interfaces.IPlaylistClickListener
+import code.name.monkey.retromusic.repository.MusicTagRepository
+import code.name.monkey.retromusic.util.MusicTagMetadata
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.RetroUtil
+import code.name.monkey.retromusic.views.MaterialMultiAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.transition.MaterialSharedAxis
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koin.android.ext.android.inject
 
 class PlaylistsFragment :
     AbsRecyclerViewCustomGridSizeFragment<PlaylistAdapter, GridLayoutManager>(),
     IPlaylistClickListener {
+
+    private val musicTagRepository by inject<MusicTagRepository>()
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -79,6 +104,7 @@ class PlaylistsFragment :
         setupGridSizeMenu(gridSizeItem.subMenu!!)
         menu.removeItem(R.id.action_layout_type)
         menu.add(0, R.id.action_add_to_playlist, 0, R.string.new_playlist_title)
+        menu.add(0, R.id.action_create_dynamic_playlist, 0, R.string.new_dynamic_playlist_title)
         menu.add(0, R.id.action_import_playlist, 0, R.string.import_playlist)
         menu.findItem(R.id.action_settings).setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         setUpSortOrderMenu(menu.findItem(R.id.action_sort_order).subMenu!!)
@@ -94,7 +120,120 @@ class PlaylistsFragment :
         if (handleSortOrderMenuItem(item)) {
             return true
         }
+        if (item.itemId == R.id.action_create_dynamic_playlist) {
+            showCreateDynamicPlaylistDialog()
+            return true
+        }
+
         return super.onMenuItemSelected(item)
+    }
+
+    private fun showCreateDynamicPlaylistDialog() {
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            val horizontalPadding = dipToPix(24f).toInt()
+            setPadding(horizontalPadding, 0, horizontalPadding, 0)
+        }
+        val nameInput = container.addDynamicPlaylistInput(R.string.my_name)
+        val includedInput = container.addDynamicPlaylistInput(
+            R.string.included_tags,
+            suggestTags = true
+        )
+        val excludedInput = container.addDynamicPlaylistInput(
+            R.string.excluded_tags,
+            suggestTags = true
+        )
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.new_dynamic_playlist_title)
+            .setView(container)
+            .setPositiveButton(R.string.create_action) { _, _ ->
+                libraryViewModel.createDynamicPlaylist(
+                    name = nameInput.text?.toString().orEmpty(),
+                    includedTags = includedInput.text?.toString().orEmpty(),
+                    excludedTags = excludedInput.text?.toString().orEmpty()
+                )
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun LinearLayout.addDynamicPlaylistInput(
+        hintRes: Int,
+        suggestTags: Boolean = false
+    ): TextView {
+        val input = if (suggestTags) {
+            MaterialMultiAutoCompleteTextView(context).apply {
+                setSingleLine(true)
+                threshold = 1
+                setTokenizer(MultiAutoCompleteTextView.CommaTokenizer())
+                setUpDynamicPlaylistTagSuggestions(this)
+            }
+        } else {
+            TextInputEditText(context).apply {
+                setSingleLine(true)
+            }
+        }
+        val inputLayout = TextInputLayout(context).apply {
+            hint = getString(hintRes)
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            addView(input)
+        }
+        addView(
+            inputLayout,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dipToPix(8f).toInt()
+            }
+        )
+        return input
+    }
+
+    private fun setUpDynamicPlaylistTagSuggestions(
+        input: MaterialMultiAutoCompleteTextView
+    ) {
+        val adapter = TagSuggestionAdapter(requireContext())
+        var searchJob: Job? = null
+
+        input.setAdapter(adapter)
+        input.doAfterTextChanged {
+            searchJob?.cancel()
+
+            val query = input.currentTagQuery()
+            if (query.isBlank()) {
+                adapter.submitList(emptyList())
+                input.dismissDropDown()
+                return@doAfterTextChanged
+            }
+
+            searchJob = viewLifecycleOwner.lifecycleScope.launch {
+                val suggestions = withContext(Dispatchers.IO) {
+                    musicTagRepository.searchTags(query)
+                        .map { it.name }
+                        .distinctBy { MusicTagMetadata.normalizeKey(it) }
+                }
+
+                if (input.currentTagQuery() != query) return@launch
+
+                adapter.submitList(suggestions)
+                if (input.hasFocus() && suggestions.isNotEmpty()) {
+                    input.showDropDown()
+                }
+            }
+        }
+    }
+
+    private fun MultiAutoCompleteTextView.currentTagQuery(): String {
+        val value = text ?: return ""
+        val cursor = selectionEnd.takeIf { it >= 0 } ?: value.length
+        val textBeforeCursor = value.subSequence(0, cursor).toString()
+        val tokenStart = maxOf(
+            textBeforeCursor.lastIndexOf(','),
+            textBeforeCursor.lastIndexOf(';')
+        ) + 1
+        return textBeforeCursor.substring(tokenStart).trim()
     }
 
     private fun setupGridSizeMenu(gridSizeMenu: SubMenu) {
@@ -240,6 +379,10 @@ class PlaylistsFragment :
     }
 
     override fun onPlaylistClick(playlistWithSongs: PlaylistWithSongs, view: View) {
+        if (playlistWithSongs.playlistEntity.playListId < 0) {
+            MusicPlayerRemote.openQueue(playlistWithSongs.songs.toSongs(), 0, true)
+            return
+        }
         exitTransition = MaterialSharedAxis(MaterialSharedAxis.Z, true).addTarget(requireView())
         reenterTransition = MaterialSharedAxis(MaterialSharedAxis.Z, false)
         findNavController().navigate(
@@ -247,4 +390,42 @@ class PlaylistsFragment :
             bundleOf(EXTRA_PLAYLIST_ID to playlistWithSongs.playlistEntity.playListId)
         )
     }
+}
+
+private class TagSuggestionAdapter(context: Context) : BaseAdapter(), Filterable {
+    private val inflater = LayoutInflater.from(context)
+    private var suggestions = emptyList<String>()
+
+    private val filter = object : Filter() {
+        override fun performFiltering(constraint: CharSequence?): FilterResults {
+            return FilterResults().apply {
+                values = suggestions
+                count = suggestions.size
+            }
+        }
+
+        override fun publishResults(constraint: CharSequence?, results: FilterResults?) {
+            notifyDataSetChanged()
+        }
+    }
+
+    fun submitList(values: List<String>) {
+        suggestions = values
+        notifyDataSetChanged()
+    }
+
+    override fun getCount(): Int = suggestions.size
+
+    override fun getItem(position: Int): String = suggestions[position]
+
+    override fun getItemId(position: Int): Long = position.toLong()
+
+    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+        val view = convertView as? TextView
+            ?: inflater.inflate(android.R.layout.simple_dropdown_item_1line, parent, false) as TextView
+        view.text = getItem(position)
+        return view
+    }
+
+    override fun getFilter(): Filter = filter
 }
