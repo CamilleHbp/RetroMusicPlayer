@@ -41,3 +41,7 @@ app/normal/release/
 /app/release/
 
 .kotlin
+
+# AI configuration
+.serena
+AGENTS.md
